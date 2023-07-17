@@ -96,6 +96,9 @@ def get_video_comments(video_id):
     return jsonify(comments), 200
 
 #Update
+app.route('/')
+def index():
+    return "CMAIS API, use /videos/<channel_name> to get videos from a channel, /videos/after?publishedAfter=2020-01-01T00:00:00Z to get videos after a date, /video/comments/<video_id> to get comments from a video"
 
 if __name__ == '__main__':
     app.run()
