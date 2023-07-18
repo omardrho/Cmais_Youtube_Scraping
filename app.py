@@ -13,7 +13,9 @@ max_results = 5
 # initial channel id
 channel_id = 'UCXwDLMDV86ldKoFVc_g8P0g'
 
-def get_videos(channel_id, published_after=None):
+def get_videos_with_comments(channel_id, published_after=None):
+    import pandas as pd
+
     data = []
     search_params = {
         'type': 'video',
@@ -29,18 +31,37 @@ def get_videos(channel_id, published_after=None):
     response = youtube.search().list(**search_params).execute()
     video_ids = [item['id']['videoId'] for item in response['items']]
 
-    response = youtube.videos().list(part=part, id=','.join(video_ids)).execute()
-
-    for item in sorted(response['items'], key=lambda x: x['snippet']['publishedAt'], reverse=True):
+    for video_id in video_ids:
         video_data = {
-            'Title': item['snippet']['title'],
-            'url': f"https://www.youtube.com/watch?v={item['id']}",
-            'Description': item['snippet']['description'],
-            'View Count': item['statistics']['viewCount'],
-            # 'Likes': item['statistics']['likeCount'],  # Not all videos have likes/dislikes
-            'Published At': item['snippet']['publishedAt'],
-            # More metadata can be added
+            'Title': None,
+            'url': f"https://www.youtube.com/watch?v={video_id}",
+            'Description': None,
+            'View Count': None,
+            'Published At': None,
+            'Comments': None  # Initialize the comments field to None
         }
+
+        video_response = youtube.videos().list(part=part, id=video_id).execute()
+        if 'items' in video_response and len(video_response['items']) > 0:
+            video_item = video_response['items'][0]['snippet']
+            video_data['Title'] = video_item['title']
+            video_data['Description'] = video_item['description']
+            video_data['View Count'] = video_response['items'][0]['statistics']['viewCount']
+            video_data['Published At'] = video_item['publishedAt']
+
+
+            comments_response = youtube.commentThreads().list(
+                part='snippet',
+                videoId=video_id,
+                textFormat='plainText',
+                maxResults=max_results
+            ).execute()
+
+            if 'items' in comments_response and len(comments_response['items']) > 0:
+                comments = [comment['snippet']['topLevelComment']['snippet']['textDisplay']
+                            for comment in comments_response['items']]
+                video_data['Comments'] = comments
+
         data.append(video_data)
 
     if len(data) > 0:
@@ -63,42 +84,56 @@ def get_channel_id(channel_name):
 
     return channel_id
 
-def channel_video_comments(video_id):
-    response = youtube.commentThreads().list(
-        part='snippet',
-        videoId=video_id,
-        maxResults=55
-    ).execute()
+# def extract_video_id(video_url):
+#     video_id = None
+#     if 'https://www.youtube.com/watch?v=' in video_url:
+#         video_id = video_url.split('v=')[-1]
+#         if '&' in video_id
+#             video_id = video_id.split('&')[0]
+#         return video_id
+#     else:
+#         return "Invalid URL"
 
-    comments = []
-    for item in response['items']:
-        comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
-        comments.append(comment)
 
-    return comments
+# def channel_video_comments(url):
+#     id_video = extract_video_id(url)
+#     response = youtube.commentThreads().list(
+#         part='snippet',
+#         videoId=id_video,
+#         maxResults=55
+#     ).execute()
+#
+#     comments = []
+#     for item in response['items']:
+#         comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
+#         comments.append(comment)
+#
+#     return comments
+
+
 
 @app.route('/videos/<channel_name>', methods=['GET'])
 def get_videos_route(channel_name):
     channel_id = get_channel_id(channel_name)
-    df, relative_last = get_videos(channel_id)
+    df, relative_last = get_videos_with_comments(channel_id)
     return jsonify(df.to_dict(orient='records')), 200
 
+# @app.route('/videos/after', methods=['GET'])
+# def get_videos_after_route():
+#     t = request.args.get('publishedAfter')
+#     df, relative_last = get_videos(channel_id, published_after=t)
+#     return jsonify(df.to_dict(orient='records')), 200
 
-@app.route('/videos/after', methods=['GET'])
-def get_videos_after_route():
-    t = request.args.get('publishedAfter')
-    df, relative_last = get_videos(channel_id, published_after=t)
-    return jsonify(df.to_dict(orient='records')), 200
-
-@app.route('/video/comments/<video_id>', methods=['GET'])
-def get_video_comments(video_id):
-    comments=channel_video_comments(video_id)
-    return jsonify(comments), 200
-
-#Update
-app.route('/')
+# @app.route('/videos/comments/<path:url>', methods=['GET'])
+# def get_video_comments(url):
+#     comments=channel_video_comments(url)
+#     return comments
+@app.route('/')
 def index():
-    return "CMAIS API, use /videos/<channel_name> to get videos from a channel, /videos/after?publishedAfter=2020-01-01T00:00:00Z to get videos after a date, /video/comments/<video_id> to get comments from a video"
+    return "CMAIS API, use /videos/<channel_name> to get videos from a channel"
+
 
 if __name__ == '__main__':
     app.run()
+
+
